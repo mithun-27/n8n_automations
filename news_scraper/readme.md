@@ -176,8 +176,8 @@ Feel free to fork this repo and submit a pull request.
 
 **Mithun S**
 
-* 🔗 LinkedIn: [https://www.linkedin.com/in/mithun-s-732939280](https://www.linkedin.com/in/mithun-s-732939280)
-* 💻 GitHub: [https://github.com/mithun-27](https://github.com/mithun-27)
+* 🔗 LinkedIn: [mithun-s-732939280](https://www.linkedin.com/in/mithun-s-732939280)
+* 💻 GitHub: [mithun-27](https://github.com/mithun-27)
 
 ---
 
