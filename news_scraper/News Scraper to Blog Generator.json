@@ -1,0 +1,500 @@
+{
+  "name": "News Scraper to Blog Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "e0202db5-58bf-49c5-9468-6fa0bf7e8470",
+      "name": "1. Telegram Trigger1",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        656
+      ],
+      "webhookId": "auto-generated",
+      "credentials": {
+        "telegramApi": {
+          "id": "GuDsmLf94jLnCTrq",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $json.message;\nconst text = (msg.text || '').trim();\n\n// Default mode is 'blog'\nlet mode = 'blog';\nlet searchTerm = text;\n\n// Detect if user sent \"blog something\" or \"post something\"\nconst m = text.match(/^(blog|post)\\s+(.+)/i);\nif (m) {\n  mode = m[1].toLowerCase();\n  searchTerm = m[2].trim();\n}\n\n// Auto date range: last 7 days\nconst endDate = new Date();\nconst startDate = new Date();\nstartDate.setDate(startDate.getDate() - 7);\n\nconst formatDate = (d) => d.toISOString().split('T')[0];\n\nreturn [\n  {\n    json: {\n      mode,\n      searchTerm,\n      searchTermEncoded: encodeURIComponent(searchTerm),\n      startDate: formatDate(startDate),\n      endDate: formatDate(endDate),\n      chatId: msg.chat.id,\n    },\n  },\n];\n"
+      },
+      "id": "436fa17a-ab32-4968-b5ad-e8710a0f3cfb",
+      "name": "2. Process User Input1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://newsdata.io/api/1/news",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "pub_acd0708872a043e6bd97a8ce95f3fe3a"
+            },
+            {
+              "name": "q",
+              "value": "={{ $('2. Process User Input1').item.json.searchTerm }}\n"
+            },
+            {
+              "name": "language",
+              "value": "en"
+            },
+            {
+              "name": "size",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "10040dd1-9f57-4e07-b916-9780a74c4540",
+      "name": "4. Scrape NewsData.io1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        608,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://gnews.io/api/v4/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "185fb6146c865119b744d2559a8c295d"
+            },
+            {
+              "name": "q",
+              "value": "={{ \n  (\n    ($node[\"2. Process User Input1\"].json.searchTerm || '')\n      .replace(/[^a-zA-Z0-9 ]/g, ' ')   // remove weird chars\n      .trim()\n      .replace(/\\s+/g, ' ')             // collapse multiple spaces\n  ) || 'news'\n}}\n"
+            },
+            {
+              "name": "lang",
+              "value": "en"
+            },
+            {
+              "name": "max",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c8621376-8888-4a08-a718-fee83e04f4b9",
+      "name": "5. Scrape GNews (Backup)1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        608,
+        752
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "id": "e68dada0-3dca-4763-8e97-fbb36c6e0790",
+      "name": "6. Merge News Sources1",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        832,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Inputs: item 0 = NewsData, item 1 = GNews\nconst newsData = $input.all();\n\n// NewsData.io results\nconst data1 = newsData[0]?.json?.results || [];\n// GNews articles\nconst data2 = newsData[1]?.json?.articles || [];\n\nconst allArticles = [...data1, ...data2];\n\nlet allText = '';\nallArticles.forEach(a => {\n  allText += (a.title || '') + ' ';\n  allText += (a.description || '') + ' ';\n  allText += (a.content || '') + ' ';\n});\n\n// Normalize / tokenize\nconst words = allText\n  .toLowerCase()\n  .replace(/[^a-z0-9\\s]/g, ' ')\n  .split(/\\s+/)\n  .filter(w => w.length > 4);\n\nconst stopWords = new Set([\n  'about','above','after','again','against','there','these','those',\n  'which','while','would','could','should','their','where','other',\n  'being','during','through','before','between'\n]);\n\nconst count = {};\nfor (const w of words) {\n  if (!stopWords.has(w)) {\n    count[w] = (count[w] || 0) + 1;\n  }\n}\n\nconst topKeywords = Object.entries(count)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 3)\n  .map(([w]) => w);\n\nconst articleSummaries = allArticles.slice(0, 5).map(a => {\n  return `Title: ${a.title || 'N/A'}\\nDescription: ${a.description || 'N/A'}`;\n}).join('\\n\\n');\n\n// Get mode + chatId + searchTerm from node 2\nconst base = $node[\"2. Process User Input1\"].json;\n\nreturn [\n  {\n    json: {\n      mode: base.mode,\n      searchTerm: base.searchTerm,\n      keyword1: topKeywords[0] || 'news',\n      keyword2: topKeywords[1] || 'updates',\n      keyword3: topKeywords[2] || 'analysis',\n      articleCount: allArticles.length,\n      articleSummaries,\n      chatId: base.chatId,\n    },\n  },\n];\n"
+      },
+      "id": "693776ce-941d-40f1-9b9e-25992a08d224",
+      "name": "7. Extract Top 3 Keywords1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $node[\"2. Process User Input1\"].json.chatId }}",
+        "text": "={{ `✅ Analysis Complete!\n\n🔎 Search Term: ${$json.searchTerm}\n📰 Articles Found: ${$json.articleCount}\n\n🏆 Top 3 Keywords:\n1️⃣ ${$json.keyword1}\n2️⃣ ${$json.keyword2}\n3️⃣ ${$json.keyword3}\n\nMode: ${$json.mode}\n\nTip: Send messages like 'blog' or 'post AI regulations' to pick the mode next time.` }}",
+        "additionalFields": {}
+      },
+      "id": "41a75026-9169-423b-9e58-bf5b676ddee6",
+      "name": "8. Send Keywords & Options1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        1280,
+        656
+      ],
+      "webhookId": "ebffe27e-b82c-443a-9a98-3e8b89ef7308",
+      "credentials": {
+        "telegramApi": {
+          "id": "GuDsmLf94jLnCTrq",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $node[\"7. Extract Top 3 Keywords1\"].json.mode }}\n",
+              "operation": "contains",
+              "value2": "blog"
+            }
+          ]
+        }
+      },
+      "id": "9c753a68-b588-4892-ac33-218da31d9e03",
+      "name": "9. Check Mode (Blog or Post)1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1488,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyBkrFDo702ZIjOruzc5xNdwHDQd9Msc2AQ",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": " application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{ JSON.stringify({   contents: [     {       parts: [         {           text: `Write a comprehensive blog post (600-800 words) about: ${$node[\"7. Extract Top 3 Keywords1\"].json.searchTerm}  Top keywords: - ${$node[\"7. Extract Top 3 Keywords1\"].json.keyword1} - ${$node[\"7. Extract Top 3 Keywords1\"].json.keyword2} - ${$node[\"7. Extract Top 3 Keywords1\"].json.keyword3}  Recent news context: ${$node[\"7. Extract Top 3 Keywords1\"].json.articleSummaries}  Requirements: - Engaging introduction - Clear headings and subheadings - SEO-optimized content - Professional tone - Strong conclusion`         }       ]     }   ],   generationConfig: {     temperature: 0.7,     maxOutputTokens: 1024   } }) }}",
+        "options": {}
+      },
+      "id": "b14f2f3c-34b5-433a-908f-d58c4174de4c",
+      "name": "11a. Generate Blog (Groq FREE)1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1712,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyBkrFDo702ZIjOruzc5xNdwHDQd9Msc2AQ",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": " application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={{ JSON.stringify({   contents: [     {       parts: [         {           text: `Create an engaging social media post (200-280 characters) about: ${$node[\"7. Extract Top 3 Keywords1\"].json.searchTerm}  Highlight: - ${$node[\"7. Extract Top 3 Keywords1\"].json.keyword1} - ${$node[\"7. Extract Top 3 Keywords1\"].json.keyword2} - ${$node[\"7. Extract Top 3 Keywords1\"].json.keyword3}  Recent news: ${$node[\"7. Extract Top 3 Keywords1\"].json.articleSummaries}  Requirements: - Catchy and attention-grabbing - Use emojis - Include 3-5 hashtags - Conversational tone`         }       ]     }   ],   generationConfig: {     temperature: 0.8,     maxOutputTokens: 256   } }) }}",
+        "options": {}
+      },
+      "id": "7dc63161-fc0a-4370-8e1d-16087a3bbf04",
+      "name": "11b. Generate Post (Groq FREE)1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1712,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const res = $json;\n\n// 1. Extract text from Gemini response\nlet text = 'No content generated.';\nif (res.candidates && res.candidates[0]?.content?.parts) {\n  text = res.candidates[0].content.parts\n    .map(p => p.text || '')\n    .join('\\n')\n    .trim();\n}\n\n// 2. Limit length for Telegram\nconst MAX_TELEGRAM_CHARS = 3500;\nif (text.length > MAX_TELEGRAM_CHARS) {\n  text = text.slice(0, MAX_TELEGRAM_CHARS) +\n    '\\n\\n... (truncated due to Telegram limit)';\n}\n\n// 3. Get meta data from node 7\nconst meta = $node[\"7. Extract Top 3 Keywords1\"].json;\n\n// 4. Return an ARRAY with one item\nreturn [\n  {\n    json: {\n      content: text,\n      chatId: meta.chatId,\n      searchTerm: meta.searchTerm,\n    },\n  },\n];\n"
+      },
+      "id": "7fd3b9f6-7cb7-4c89-8977-57bf8fb82397",
+      "name": "12a. Format Blog Response1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1936,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node 12a: Format Blog Response1\n\n// Gemini response structure from node 11a:\n// {\n//   candidates: [\n//     {\n//       content: {\n//         parts: [{ text: \"...\" }, ...]\n//       }\n//     }\n//   ]\n// }\n\nconst res = $json;\n\nlet text = 'No content generated.';\nif (res.candidates && res.candidates[0]?.content?.parts) {\n  text = res.candidates[0].content.parts\n    .map(p => p.text || '')\n    .join('\\n')\n    .trim();\n}\n\n// 👇 Get chatId & searchTerm from node 7 output\nconst meta = $node[\"7. Extract Top 3 Keywords1\"].json;\n\n// ✅ Return an ARRAY of objects (required by n8n)\nreturn [\n  {\n    json: {\n      content: text,\n      chatId: meta.chatId,\n      searchTerm: meta.searchTerm\n    }\n  }\n];\n"
+      },
+      "id": "a2a05b12-cf9a-405b-8fa2-7254749845d9",
+      "name": "12b. Format Post Response1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1936,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ (\n  \"📝 BLOG POST GENERATED 📝\\n\\n\" +\n  $json.content +\n  \"\\n\\n---\\nThis message was sent automatically with n8n\"\n).slice(0, 4000) }}\n",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "462dd799-fbd9-4b2e-9ceb-495c60721ff5",
+      "name": "13a. Send Blog to Telegram1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        544
+      ],
+      "webhookId": "24b3713f-6c95-4b45-8f6b-c3c7d5424ef8",
+      "credentials": {
+        "telegramApi": {
+          "id": "GuDsmLf94jLnCTrq",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ `📱 SOCIAL MEDIA POST GENERATED 📱\n\n${$json.content}\n\n---\nGenerated by News to Blog Bot (100% FREE)\nTopic: ${$json.searchTerm}` }}",
+        "additionalFields": {}
+      },
+      "id": "a86ee85f-c059-4384-82e2-bd823a70de30",
+      "name": "13b. Send Post to Telegram1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        752
+      ],
+      "webhookId": "d5971c21-a01a-49a1-947f-781b633487d8",
+      "credentials": {
+        "telegramApi": {
+          "id": "GuDsmLf94jLnCTrq",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "=🔍 Searching news for: {{ $json.searchTerm }}\n\n⏳ Please wait while I collect recent articles...\n",
+        "additionalFields": {}
+      },
+      "id": "d2fb2717-c49a-46ea-b3e9-cca8f9084f83",
+      "name": "3. Send Searching Message1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        656
+      ],
+      "webhookId": "2c0958e5-1c7d-4ffd-9d4d-ba107fe43747",
+      "credentials": {
+        "telegramApi": {
+          "id": "GuDsmLf94jLnCTrq",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "1. Telegram Trigger1": {
+      "main": [
+        [
+          {
+            "node": "2. Process User Input1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Process User Input1": {
+      "main": [
+        [
+          {
+            "node": "3. Send Searching Message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Scrape NewsData.io1": {
+      "main": [
+        [
+          {
+            "node": "6. Merge News Sources1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5. Scrape GNews (Backup)1": {
+      "main": [
+        [
+          {
+            "node": "6. Merge News Sources1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "6. Merge News Sources1": {
+      "main": [
+        [
+          {
+            "node": "7. Extract Top 3 Keywords1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7. Extract Top 3 Keywords1": {
+      "main": [
+        [
+          {
+            "node": "8. Send Keywords & Options1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8. Send Keywords & Options1": {
+      "main": [
+        [
+          {
+            "node": "9. Check Mode (Blog or Post)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "9. Check Mode (Blog or Post)1": {
+      "main": [
+        [
+          {
+            "node": "11a. Generate Blog (Groq FREE)1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "11b. Generate Post (Groq FREE)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11a. Generate Blog (Groq FREE)1": {
+      "main": [
+        [
+          {
+            "node": "12a. Format Blog Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11b. Generate Post (Groq FREE)1": {
+      "main": [
+        [
+          {
+            "node": "12b. Format Post Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12a. Format Blog Response1": {
+      "main": [
+        [
+          {
+            "node": "13a. Send Blog to Telegram1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12b. Format Post Response1": {
+      "main": [
+        [
+          {
+            "node": "13b. Send Post to Telegram1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Send Searching Message1": {
+      "main": [
+        [
+          {
+            "node": "5. Scrape GNews (Backup)1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "4. Scrape NewsData.io1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9f49b026-093b-4a0f-bbe1-03daaf06a938",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "47e98bb17b18fe800fc061e0ff1facdb3daf71691eb96d61370d008fa0eeaf80"
+  },
+  "id": "8jim5KtcACu5HXjh",
+  "tags": []
+}
