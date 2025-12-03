@@ -182,7 +182,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyBkrFDo702ZIjOruzc5xNdwHDQd9Msc2AQ",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=YOUR_API_KEY",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -209,7 +209,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyBkrFDo702ZIjOruzc5xNdwHDQd9Msc2AQ",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=YOUR_API_KEY",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
