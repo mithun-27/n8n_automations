@@ -45,7 +45,7 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "pub_acd0708872a043e6bd97a8ce95f3fe3a"
+              "value": "YOUR_API"
             },
             {
               "name": "q",
@@ -80,7 +80,7 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "185fb6146c865119b744d2559a8c295d"
+              "value": "YOUR_API"
             },
             {
               "name": "q",
