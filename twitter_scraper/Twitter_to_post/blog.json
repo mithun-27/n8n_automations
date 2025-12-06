@@ -1,0 +1,119 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message", "callback_query"],
+        "additionalFields": {}
+      },
+      "id": "b7db7536-b0aa-4a00-98b7-c8f51b198ac7",
+      "name": "1. Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [-784, 256],
+      "webhookId": "auto-generated",
+      "credentials": {
+        "telegramApi": {
+          "id": "__REMOVED__",
+          "name": "__TELEGRAM_CREDENTIAL__"
+        }
+      }
+    },
+
+    {
+      "parameters": {
+        "jsCode": "// unchanged logic\n// content omitted for brevity"
+      },
+      "id": "05915233-ba03-46c2-ba8a-1d89626d56c0",
+      "name": "2. Parse User Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-576, 256]
+    },
+
+    {
+      "parameters": {
+        "url": "https://nitter.net/{{ encodeURIComponent($json.userInput) }}/rss",
+        "options": { "timeout": 15000 }
+      },
+      "id": "c102d2a6-d827-4126-aedd-a4a0797cb6a3",
+      "name": "4. Fetch Twitter/X",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [-128, 144]
+    },
+
+    {
+      "parameters": {
+        "url": "https://newsdata.io/api/1/news?apikey=__API_KEY__&q={{ encodeURIComponent($json.userInput) }}&language=en"
+      },
+      "id": "d6b38804-cd35-4eae-ab82-89a23a1ef84f",
+      "name": "5. Fetch News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [-128, 320]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "key", "value": "__API_KEY__" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "Analyze content and return top 3 genres related to the topic."
+                }
+              ]
+            }
+          ],
+          "generationConfig": {
+            "temperature": 0.5,
+            "maxOutputTokens": 256
+          }
+        }
+      },
+      "id": "23bed3a6-093b-4a48-a068-f6f7e905fe52",
+      "name": "9. Analyze Genres (Gemini)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [752, 256]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/bot__TELEGRAM_BOT_TOKEN__/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": {
+          "chat_id": "__CHAT_ID__",
+          "text": "✅ Content Generated",
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "5232f68e-4643-413e-90e1-cfb00f6d5a2e",
+      "name": "Send Telegram Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1248, 256]
+    }
+  ],
+
+  "connections": {},
+
+  "pinData": {},
+
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "__REMOVED__"
+  }
+}
