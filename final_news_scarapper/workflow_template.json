@@ -1,0 +1,591 @@
+{
+    "name": "Topic Analysis to Content Generator - FIXED",
+    "nodes": [
+        {
+            "parameters": {
+                "updates": [
+                    "message",
+                    "callback_query"
+                ]
+            },
+            "id": "node-telegram-trigger",
+            "name": "1. Telegram Trigger",
+            "type": "n8n-nodes-base.telegramTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                100,
+                300
+            ],
+            "webhookId": "telegram-topic-analyzer"
+        },
+        {
+            "parameters": {
+                "jsCode": "const input = $input.first().json;\nlet topic = '';\nlet action = 'new_topic';\nlet chatId = '';\nlet callbackData = null;\nlet messageId = null;\n\nif (input.callback_query) {\n  callbackData = input.callback_query.data;\n  chatId = input.callback_query.message.chat.id;\n  messageId = input.callback_query.message.message_id;\n  \n  if (callbackData.startsWith('genre_')) {\n    action = 'genre_selected';\n    topic = callbackData.replace('genre_', '');\n  } else if (callbackData.startsWith('format_')) {\n    action = 'format_selected';\n    topic = callbackData.replace('format_', '');\n  }\n} else if (input.message) {\n  const message = input.message.text || '';\n  chatId = input.message.chat.id;\n  messageId = input.message.message_id;\n  topic = message.trim();\n  action = 'new_topic';\n}\n\nreturn {\n  topic: topic,\n  action: action,\n  chatId: chatId,\n  messageId: messageId,\n  callbackData: callbackData,\n  isCallback: !!input.callback_query\n};"
+            },
+            "id": "node-parse-input",
+            "name": "2. Parse User Input",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "rules": {
+                    "values": [
+                        {
+                            "conditions": {
+                                "options": {
+                                    "caseSensitive": true,
+                                    "leftValue": "",
+                                    "typeValidation": "strict"
+                                },
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.action }}",
+                                        "rightValue": "new_topic",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ],
+                                "combinator": "and"
+                            },
+                            "renameOutput": true,
+                            "outputKey": "NewTopic"
+                        },
+                        {
+                            "conditions": {
+                                "options": {
+                                    "caseSensitive": true,
+                                    "leftValue": "",
+                                    "typeValidation": "strict"
+                                },
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.action }}",
+                                        "rightValue": "genre_selected",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ],
+                                "combinator": "and"
+                            },
+                            "renameOutput": true,
+                            "outputKey": "GenreSelected"
+                        },
+                        {
+                            "conditions": {
+                                "options": {
+                                    "caseSensitive": true,
+                                    "leftValue": "",
+                                    "typeValidation": "strict"
+                                },
+                                "conditions": [
+                                    {
+                                        "leftValue": "={{ $json.action }}",
+                                        "rightValue": "format_selected",
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        }
+                                    }
+                                ],
+                                "combinator": "and"
+                            },
+                            "renameOutput": true,
+                            "outputKey": "FormatSelected"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "node-route-action",
+            "name": "3. Route by Action",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 3,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "https://api.twitter.com/2/tweets/search/recent",
+                "sendQuery": true,
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "query",
+                            "value": "={{ $json.topic }} -is:retweet lang:en"
+                        },
+                        {
+                            "name": "max_results",
+                            "value": "15"
+                        },
+                        {
+                            "name": "tweet.fields",
+                            "value": "created_at,text,public_metrics"
+                        },
+                        {
+                            "name": "start_time",
+                            "value": "={{ new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() }}"
+                        }
+                    ]
+                },
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer YOUR_TWITTER_BEARER_TOKEN"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "node-fetch-twitter",
+            "name": "4. Fetch TwitterX",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                700,
+                180
+            ]
+        },
+        {
+            "parameters": {
+                "method": "GET",
+                "url": "https://newsdata.io/api/1/latest",
+                "sendQuery": true,
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "apikey",
+                            "value": "YOUR_NEWSDATA_API_KEY"
+                        },
+                        {
+                            "name": "q",
+                            "value": "={{ $('2. Parse User Input').first().json.topic }}"
+                        },
+                        {
+                            "name": "language",
+                            "value": "en"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "node-fetch-news",
+            "name": "5. Fetch News",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                700,
+                340
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "combine",
+                "combineBy": "combineByPosition",
+                "options": {}
+            },
+            "id": "node-merge",
+            "name": "6. Merge Sources",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 3,
+            "position": [
+                900,
+                260
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const items = $input.all();\nconst topic = $('2. Parse User Input').first().json.topic;\nlet allText = 'Topic: ' + topic + '\\n\\n';\n\nfor (const item of items) {\n  if (item.json.data && Array.isArray(item.json.data)) {\n    for (const tweet of item.json.data) {\n      if (tweet.text) allText += tweet.text + '\\n';\n    }\n  }\n  if (item.json.results && Array.isArray(item.json.results)) {\n    for (const article of item.json.results) {\n      if (article.title) allText += article.title + '\\n';\n      if (article.description) allText += article.description + '\\n';\n    }\n  }\n}\n\nreturn {\n  topic: topic,\n  collectedText: allText.substring(0, 10000),\n  chatId: $('2. Parse User Input').first().json.chatId\n};"
+            },
+            "id": "node-collect-text",
+            "name": "7. Collect Text",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1100,
+                260
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.openai.com/v1/chat/completions",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer YOUR_OPENAI_API_KEY"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an expert content analyst. Based on the provided topic and related content, identify EXACTLY 3 relevant genres/themes that would make interesting content about this specific topic. Return ONLY valid JSON with this exact structure: {\\\"genres\\\": [{\\\"name\\\": \\\"Genre Name\\\", \\\"emoji\\\": \\\"🎯\\\"}], \\\"topic\\\": \\\"the topic\\\"}. Each genre should be specific to the topic, not generic. Use creative emojis.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify('Analyze this topic and content, return 3 specific genres: ' + $json.collectedText) }}\n    }\n  ],\n  \"temperature\": 0.7\n}",
+                "options": {}
+            },
+            "id": "node-analyze-genres",
+            "name": "8. Analyze Genres (OpenAI)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1300,
+                260
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const response = $input.first().json;\nconst topic = $('7. Collect Text').first().json.topic;\nconst chatId = $('7. Collect Text').first().json.chatId;\n\nlet parsed = { genres: [], topic: topic };\n\ntry {\n  if (response.choices && response.choices[0]) {\n    let content = response.choices[0].message.content;\n    const jsonMatch = content.match(/```json\\n?([\\s\\S]*?)\\n?```/);\n    if (jsonMatch) {\n      parsed = JSON.parse(jsonMatch[1]);\n    } else {\n      parsed = JSON.parse(content);\n    }\n  }\n} catch (e) {\n  parsed = {\n    genres: [\n      {name: 'Industry Analysis', emoji: '📊'},\n      {name: 'Innovation & Technology', emoji: '🚀'},\n      {name: 'Market Trends', emoji: '📈'}\n    ],\n    topic: topic\n  };\n}\n\nconst keyboard = parsed.genres.map(g => [\n  { text: g.emoji + ' ' + g.name, callback_data: 'genre_' + topic + '|||' + g.name }\n]);\n\nreturn {\n  topic: topic,\n  genres: parsed.genres,\n  chatId: chatId,\n  keyboard: keyboard,\n  genreText: parsed.genres.map((g, i) => (i+1) + '️⃣ ' + g.name).join('\\n')\n};"
+            },
+            "id": "node-parse-genres",
+            "name": "9. Parse Genres",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1500,
+                260
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "=https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, text: '✅ Analysis Complete: ' + $json.topic + '\\n\\n🎯 Top 3 Genres:\\n' + $json.genreText + '\\n\\n📌 Select a genre:', reply_markup: { inline_keyboard: $json.keyboard } }) }}",
+                "options": {}
+            },
+            "id": "node-send-genres",
+            "name": "10. Send Genres",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1700,
+                260
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const input = $('2. Parse User Input').first().json;\nconst callbackData = input.topic;\nconst chatId = input.chatId;\n\nlet originalTopic = '';\nlet selectedGenre = callbackData;\n\nif (callbackData.includes('|||')) {\n  const parts = callbackData.split('|||');\n  originalTopic = parts[0];\n  selectedGenre = parts[1];\n} else {\n  originalTopic = callbackData;\n  selectedGenre = callbackData;\n}\n\nconst keyboard = [\n  [{ text: '📝 Blog Post', callback_data: 'format_blog_' + originalTopic + '|||' + selectedGenre }],\n  [{ text: '🐦 Social Post', callback_data: 'format_social_' + originalTopic + '|||' + selectedGenre }]\n];\n\nreturn {\n  originalTopic: originalTopic,\n  selectedGenre: selectedGenre,\n  chatId: chatId,\n  keyboard: keyboard\n};"
+            },
+            "id": "node-handle-genre",
+            "name": "11. Handle Genre Selection",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                700,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "=https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, text: '✅ Topic: ' + $json.originalTopic + '\\n✅ Selected: ' + $json.selectedGenre + '\\n\\n📋 Choose format:', reply_markup: { inline_keyboard: $json.keyboard } }) }}",
+                "options": {}
+            },
+            "id": "node-ask-format",
+            "name": "12. Ask Blog or Post",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                900,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const input = $('2. Parse User Input').first().json;\nconst callbackData = input.topic;\nconst chatId = input.chatId;\n\nlet format = 'blog';\nlet originalTopic = '';\nlet genre = callbackData;\n\nif (callbackData.startsWith('blog_')) {\n  format = 'blog';\n  const remaining = callbackData.replace('blog_', '');\n  if (remaining.includes('|||')) {\n    const parts = remaining.split('|||');\n    originalTopic = parts[0];\n    genre = parts[1];\n  } else {\n    originalTopic = remaining;\n    genre = remaining;\n  }\n} else if (callbackData.startsWith('social_')) {\n  format = 'social';\n  const remaining = callbackData.replace('social_', '');\n  if (remaining.includes('|||')) {\n    const parts = remaining.split('|||');\n    originalTopic = parts[0];\n    genre = parts[1];\n  } else {\n    originalTopic = remaining;\n    genre = remaining;\n  }\n}\n\nlet prompt = '';\nif (format === 'blog') {\n  prompt = `Write a detailed, engaging blog post about \"${originalTopic}\" focusing on the angle of \"${genre}\". Make it specific to ${originalTopic}, include recent developments and insights about ${originalTopic}'s activities in ${genre}. Keep it under 2000 characters. Add 3-5 relevant hashtags including #${originalTopic.replace(/\\s+/g, '')} at the end.`;\n} else {\n  prompt = `Create an engaging, viral social media post about \"${originalTopic}\" from the perspective of \"${genre}\". Make it specific to ${originalTopic}, attention-grabbing, include emojis, keep it under 280 characters, and add 4-5 trending hashtags including #${originalTopic.replace(/\\s+/g, '')}. Make it shareable and fun!`;\n}\n\nreturn {\n  format: format,\n  originalTopic: originalTopic,\n  genre: genre,\n  chatId: chatId,\n  prompt: prompt\n};"
+            },
+            "id": "node-prepare-content",
+            "name": "13. Prepare Content",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                700,
+                680
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.openai.com/v1/chat/completions",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer YOUR_OPENAI_API_KEY"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.prompt) }}\n    }\n  ],\n  \"temperature\": 0.9,\n  \"max_tokens\": 1000\n}",
+                "options": {}
+            },
+            "id": "node-generate-content",
+            "name": "14. Generate Content (OpenAI)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                900,
+                680
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const response = $input.first().json;\nconst prevData = $('13. Prepare Content').first().json;\nlet content = 'Content generation failed';\n\nif (response.choices && response.choices[0]) {\n  content = response.choices[0].message.content;\n}\n\nlet header = prevData.format === 'blog' ? '📝 Blog Post Generated!' : '🎉 Social Post Generated!';\n\nif (content.length > 3500) {\n  content = content.substring(0, 3500) + '...';\n}\n\nlet finalMessage = header + '\\n\\n' + content;\n\nreturn {\n  message: finalMessage,\n  chatId: prevData.chatId,\n  format: prevData.format\n};"
+            },
+            "id": "node-format-response",
+            "name": "15. Format Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1100,
+                680
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "=https://api.telegram.org/botYOUR_TELEGRAM_BOT_TOKEN/sendMessage",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ chat_id: $json.chatId, text: $json.message }) }}",
+                "options": {}
+            },
+            "id": "node-send-message",
+            "name": "16. Send Content",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1300,
+                680
+            ]
+        }
+    ],
+    "connections": {
+        "1. Telegram Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "2. Parse User Input",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "2. Parse User Input": {
+            "main": [
+                [
+                    {
+                        "node": "3. Route by Action",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "3. Route by Action": {
+            "main": [
+                [
+                    {
+                        "node": "4. Fetch TwitterX",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "5. Fetch News",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "11. Handle Genre Selection",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "13. Prepare Content",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "4. Fetch TwitterX": {
+            "main": [
+                [
+                    {
+                        "node": "6. Merge Sources",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "5. Fetch News": {
+            "main": [
+                [
+                    {
+                        "node": "6. Merge Sources",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "6. Merge Sources": {
+            "main": [
+                [
+                    {
+                        "node": "7. Collect Text",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "7. Collect Text": {
+            "main": [
+                [
+                    {
+                        "node": "8. Analyze Genres (OpenAI)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "8. Analyze Genres (OpenAI)": {
+            "main": [
+                [
+                    {
+                        "node": "9. Parse Genres",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "9. Parse Genres": {
+            "main": [
+                [
+                    {
+                        "node": "10. Send Genres",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "11. Handle Genre Selection": {
+            "main": [
+                [
+                    {
+                        "node": "12. Ask Blog or Post",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "13. Prepare Content": {
+            "main": [
+                [
+                    {
+                        "node": "14. Generate Content (OpenAI)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "14. Generate Content (OpenAI)": {
+            "main": [
+                [
+                    {
+                        "node": "15. Format Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "15. Format Response": {
+            "main": [
+                [
+                    {
+                        "node": "16. Send Content",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "3.0",
+    "meta": {
+        "instanceId": "local"
+    },
+    "tags": []
+}
