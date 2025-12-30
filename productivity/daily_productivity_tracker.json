@@ -1,0 +1,635 @@
+{
+  "name": "Employee Daily Productivity Tracker",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "submit-daily",
+        "options": {}
+      },
+      "id": "e1",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "bae35158-daily-prod-tracker"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.body.employee_name }}",
+              "operation": "isNotEmpty"
+            },
+            {
+              "value1": "={{ $json.body.employee_id }}",
+              "operation": "isNotEmpty"
+            },
+            {
+              "value1": "={{ $json.body.date }}",
+              "operation": "isNotEmpty"
+            }
+          ],
+          "number": [
+            {
+              "value1": "={{ $json.body.time_spent_hours }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        },
+        "combineOperation": "all"
+      },
+      "id": "e2",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        250,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"error\": \"Missing required fields: employee_name, employee_id, date, time_spent_hours\"\n}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "e3",
+      "name": "400 Bad Request",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": "={{ $env.GOOGLE_SHEET_ID }}",
+        "range": "A:J",
+        "options": {}
+      },
+      "id": "e4",
+      "name": "Save to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [
+        500,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "googleSheetsDefault",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a productivity analyst. Analyze the employee's daily submission."
+            },
+            {
+              "content": "=Employee: {{ $json.employee_name }}\nTasks: {{ $json.tasks_completed }}\nTime: {{ $json.time_spent_hours }}h\nTools: {{ $json.tools_used }}\nBlockers: {{ $json.blockers }}\nSelf Score: {{ $json.self_productivity_score }}\n\nTask:\n1. Summarize work (3-5 bullets)\n2. Identify blockers/risks\n3. Infer productivity (Low/Med/High)\n4. Detect warning signals (burnout, etc)\n5. Generate manager summary paragraph"
+            }
+          ]
+        }
+      },
+      "id": "e5",
+      "name": "AI Analysis",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        750,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "openaiDefault",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.self_productivity_score }}",
+              "operation": "smaller",
+              "value2": 4
+            }
+          ],
+          "string": [
+            {
+              "value1": "={{ $json.blockers }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        },
+        "combineOperation": "any"
+      },
+      "id": "e6",
+      "name": "Check Alerts",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "channel": "={{ $env.SLACK_MANAGER_CHANNEL }}",
+        "text": "=⚠️ *Productivity Alert*\nEmployee: {{ $json.employee_name }}\nScore: {{ $json.self_productivity_score }}\nBlockers: {{ $json.blockers }}\n\nAnalysis: {{ $json.content }}"
+      },
+      "id": "e7",
+      "name": "Slack Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        -150
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "slackDefault",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "manager@example.com",
+        "subject": "=Daily Report: {{ $json.employee_name }}",
+        "message": "=Please find the daily summary below.\n\n{{ $json.content }}\n\nTools Used: {{ $json.tools_used }}\nTime: {{ $json.time_spent_hours }}h"
+      },
+      "id": "e8",
+      "name": "Email Report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1250,
+        150
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmailDefault",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"success\", \"message\": \"Submission received and analyzed.\" }"
+      },
+      "id": "e9",
+      "name": "200 OK Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "hour": 18,
+              "minute": 0
+            }
+          ]
+        }
+      },
+      "id": "e10",
+      "name": "Daily Cron 6PM",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        0,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "sheetId": "={{ $env.GOOGLE_SHEET_ID }}",
+        "range": "A:J",
+        "returnAllMatches": "getAllMatches"
+      },
+      "id": "e11",
+      "name": "Fetch Today's Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [
+        250,
+        600
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "googleSheetsDefault",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate by department\nconst data = items.map(i => i.json);\nconst depts = {};\n\ndata.forEach(d => {\n  if(!depts[d.department]) depts[d.department] = { count: 0, totalScore: 0, hours: 0, blockers: 0 };\n  depts[d.department].count++;\n  depts[d.department].totalScore += parseFloat(d.self_productivity_score || 0);\n  depts[d.department].hours += parseFloat(d.time_spent_hours || 0);\n  if(d.blockers) depts[d.department].blockers++;\n});\n\nreturn Object.keys(depts).map(dep => ({\n  json: {\n    department: dep,\n    avgScore: depts[dep].totalScore / depts[dep].count,\n    avgHours: depts[dep].hours / depts[dep].count,\n    riskCount: depts[dep].blockers\n  }\n}));"
+      },
+      "id": "e12",
+      "name": "Aggregate Dept Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=Analyze this department data and generate insights:\n{{ JSON.stringify($json) }}\n\nInclude:\n- Overall performance\n- Bottlenecks\n- High/low performers (general trends)\n- Actionable recommendations"
+            }
+          ]
+        }
+      },
+      "id": "e13",
+      "name": "AI Dept Summary",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        750,
+        600
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "openaiDefault",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "={{ $env.SLACK_LEADERSHIP_CHANNEL }}",
+        "text": "=📊 *Daily Department Report*\n\n{{ $json.content }}"
+      },
+      "id": "e14",
+      "name": "Send Dept Report",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        600
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "slackDefault",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "custom",
+              "cronExpression": "0 18 * * 5"
+            }
+          ]
+        }
+      },
+      "id": "e15",
+      "name": "Weekly Cron (Fri 6PM)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1000
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "sheetId": "={{ $env.GOOGLE_SHEET_ID }}",
+        "range": "A:J"
+      },
+      "id": "e16",
+      "name": "Fetch Weekly Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [
+        250,
+        1000
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "googleSheetsDefault",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a senior HR analyst."
+            },
+            {
+              "role": "user",
+              "content": "=Analyze the weekly data for trends:\n{{ JSON.stringify($json) }}\n\n1. Identify productivity trends\n2. Detect consistent under-performance\n3. Highlight top contributors\n4. Generate leadership summary"
+            }
+          ]
+        }
+      },
+      "id": "e17",
+      "name": "AI Trend Analysis",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        500,
+        1000
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "openaiDefault",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "leadership@example.com",
+        "subject": "Weekly Productivity Insights",
+        "message": "={{ $json.content }}"
+      },
+      "id": "e18",
+      "name": "Email Leadership",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        750,
+        1000
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmailDefault",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "e19",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": "={{ $env.ERROR_LOG_SHEET_ID }}",
+        "range": "A:D",
+        "options": {}
+      },
+      "id": "e20",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [
+        250,
+        1400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "googleSheetsDefault",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "channel": "={{ $env.SLACK_OPS_CHANNEL }}",
+        "text": "=🚨 *Workflow Failure*\nNode: {{ $json.execution.lastNodeExecuted }}\nError: {{ $json.execution.error.message }}\nLink: {{ $json.execution.url }}"
+      },
+      "id": "e21",
+      "name": "Alert Ops",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [
+        500,
+        1400
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "slackDefault",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Save to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "400 Bad Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Sheets": {
+      "main": [
+        [
+          {
+            "node": "AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Check Alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Alerts": {
+      "main": [
+        [
+          {
+            "node": "Slack Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Report": {
+      "main": [
+        [
+          {
+            "node": "200 OK Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Cron 6PM": {
+      "main": [
+        [
+          {
+            "node": "Fetch Today's Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Today's Data": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Dept Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Dept Data": {
+      "main": [
+        [
+          {
+            "node": "AI Dept Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Dept Summary": {
+      "main": [
+        [
+          {
+            "node": "Send Dept Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weekly Cron (Fri 6PM)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Weekly Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Weekly Data": {
+      "main": [
+        [
+          {
+            "node": "AI Trend Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Trend Analysis": {
+      "main": [
+        [
+          {
+            "node": "Email Leadership",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error": {
+      "main": [
+        [
+          {
+            "node": "Alert Ops",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
