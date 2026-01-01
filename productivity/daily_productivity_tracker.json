@@ -71,6 +71,60 @@
     },
     {
       "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "employee_name",
+              "value": "={{ $json.body.employee_name }}"
+            },
+            {
+              "name": "employee_id",
+              "value": "={{ $json.body.employee_id }}"
+            },
+            {
+              "name": "date",
+              "value": "={{ $json.body.date }}"
+            },
+            {
+              "name": "tasks_completed",
+              "value": "={{ $json.body.tasks_completed }}"
+            },
+            {
+              "name": "time_spent_hours",
+              "value": "={{ $json.body.time_spent_hours }}"
+            },
+            {
+              "name": "tools_used",
+              "value": "={{ $json.body.tools_used }}"
+            },
+            {
+              "name": "blockers",
+              "value": "={{ $json.body.blockers }}"
+            },
+            {
+              "name": "self_productivity_score",
+              "value": "={{ $json.body.self_productivity_score }}"
+            },
+            {
+              "name": "department",
+              "value": "={{ $json.body.department }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e_fix",
+      "name": "Prepare Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
         "operation": "append",
         "sheetId": "={{ $env.GOOGLE_SHEET_ID }}",
         "range": "A:J",
@@ -93,7 +147,8 @@
     },
     {
       "parameters": {
-        "model": "gpt-4",
+        "resource": "chat",
+        "model": "gpt-4o-mini",
         "messages": {
           "values": [
             {
@@ -126,14 +181,14 @@
         "conditions": {
           "number": [
             {
-              "value1": "={{ $json.self_productivity_score }}",
+              "value1": "={{ $('Prepare Data').item.json.self_productivity_score }}",
               "operation": "smaller",
               "value2": 4
             }
           ],
           "string": [
             {
-              "value1": "={{ $json.blockers }}",
+              "value1": "={{ $('Prepare Data').item.json.blockers }}",
               "operation": "isNotEmpty"
             }
           ]
@@ -152,7 +207,7 @@
     {
       "parameters": {
         "channel": "={{ $env.SLACK_MANAGER_CHANNEL }}",
-        "text": "=⚠️ *Productivity Alert*\nEmployee: {{ $json.employee_name }}\nScore: {{ $json.self_productivity_score }}\nBlockers: {{ $json.blockers }}\n\nAnalysis: {{ $json.content }}"
+        "text": "=⚠️ *Productivity Alert*\nEmployee: {{ $('Prepare Data').item.json.employee_name }}\nScore: {{ $('Prepare Data').item.json.self_productivity_score }}\nBlockers: {{ $('Prepare Data').item.json.blockers }}\n\nAnalysis: {{ $json.message.content }}"
       },
       "id": "e7",
       "name": "Slack Alert",
@@ -172,8 +227,8 @@
     {
       "parameters": {
         "sendTo": "manager@example.com",
-        "subject": "=Daily Report: {{ $json.employee_name }}",
-        "message": "=Please find the daily summary below.\n\n{{ $json.content }}\n\nTools Used: {{ $json.tools_used }}\nTime: {{ $json.time_spent_hours }}h"
+        "subject": "=Daily Report: {{ $('Prepare Data').item.json.employee_name }}",
+        "message": "=Please find the daily summary below.\n\n{{ $json.message.content }}\n\nTools Used: {{ $('Prepare Data').item.json.tools_used }}\nTime: {{ $('Prepare Data').item.json.time_spent_hours }}h"
       },
       "id": "e8",
       "name": "Email Report",
@@ -261,7 +316,8 @@
     },
     {
       "parameters": {
-        "model": "gpt-4",
+        "resource": "chat",
+        "model": "gpt-4o-mini",
         "messages": {
           "values": [
             {
@@ -289,7 +345,7 @@
     {
       "parameters": {
         "channel": "={{ $env.SLACK_LEADERSHIP_CHANNEL }}",
-        "text": "=📊 *Daily Department Report*\n\n{{ $json.content }}"
+        "text": "=📊 *Daily Department Report*\n\n{{ $json.message.content }}"
       },
       "id": "e14",
       "name": "Send Dept Report",
@@ -382,7 +438,7 @@
       "parameters": {
         "sendTo": "leadership@example.com",
         "subject": "Weekly Productivity Insights",
-        "message": "={{ $json.content }}"
+        "message": "={{ $json.message.content }}"
       },
       "id": "e18",
       "name": "Email Leadership",
@@ -469,7 +525,7 @@
       "main": [
         [
           {
-            "node": "Save to Sheets",
+            "node": "Prepare Data",
             "type": "main",
             "index": 0
           }
@@ -477,6 +533,17 @@
         [
           {
             "node": "400 Bad Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Data": {
+      "main": [
+        [
+          {
+            "node": "Save to Sheets",
             "type": "main",
             "index": 0
           }
